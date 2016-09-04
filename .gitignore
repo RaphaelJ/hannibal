@@ -1,0 +1,9 @@
+.directory
+dist
+cabal-dev
+.cabal-sandbox
+*.o
+*.hi
+*.chi
+*.chs.h
+*~

@@ -15,15 +15,6 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Main where
+module Hannibal.Index where
 
 import ClassyPrelude
-
-import qualified Data.ByteString.Lazy as BL
-
-import Hannibal.Pieces (fileDesc)
-
-main :: IO ()
-main = do
-    desc <- fileDesc <$> BL.readFile "/home/rapha/big.iso"
-    print desc

@@ -1,4 +1,4 @@
--- Hannibal, a P2P client for local networks.
+-- Hannibal, a P2P client for local area networks.
 --
 -- Copyright (C) 2016 Raphael Javaux <raphaeljavaux@gmail.com>
 --
