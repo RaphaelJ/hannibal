@@ -15,17 +15,16 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Main where
+module Hannibal.Config where
 
 import ClassyPrelude
 
-import Hannibal.Filesystem.Index (newIndex, addDirectory)
--- import Hannibal.Network.FileTransfer (putPiece)
+import qualified Data.Map.Strict as M
 
-main :: IO ()
-main = do
-    idx <- pure (newIndex "Raphael's MacBook") >>=
-        addDirectory "Desktop" "/Users/rapha/Desktop" >>=
-        addDirectory "Hannibal" "/Users/rapha/hannibal"
-
-    print idx
+data Config = Config
+    { cName         :: !Text    -- ^ The name of this instance
+    -- | The directories that are shared by this instance.
+    --
+    -- Maps shared directory names to directory paths.
+    , cSharedDirs   :: M.Map Text FilePath
+    } deriving (Eq, Read, Show)
