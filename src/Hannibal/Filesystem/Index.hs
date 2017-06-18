@@ -55,4 +55,6 @@ addDirectory dirName path idx@Index{..} = do
     cache <- IndexedDirectory <$> readDirectoryWith indexFile path
     return $! idx { iSharedDirs = M.insert dirName cache iSharedDirs }
   where
-    indexFile filePath = fileDesc <$> LBS.readFile filePath
+    indexFile filePath = do
+        content <- LBS.readFile filePath
+        return $! fileDesc content
