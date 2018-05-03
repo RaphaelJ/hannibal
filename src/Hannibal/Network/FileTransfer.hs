@@ -1,6 +1,6 @@
 -- Hannibal, a P2P client for local area networks.
 --
--- Copyright (C) 2016, 2017 Raphael Javaux <raphaeljavaux@gmail.com>
+-- Copyright (C) 2017 Raphael Javaux <raphaeljavaux@gmail.com>
 --
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -15,22 +15,25 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Main where
+module Hannibal.Network.FileTransfer
+    ( putPiece
+    ) where
 
 import ClassyPrelude
 
-import Hannibal.Config (defaultConfig)
-import Hannibal.Instance (getInstance)
+-- import Codec.Compression.LZ4 (compress)
+import Data.Binary (Put)
+import Data.Bson (Binary (..), (=:))
+import Data.Bson.Binary (putDocument)
 
--- import Hannibal.Filesystem.FileIndex (newIndex, addDirectory)
+import qualified Data.ByteString.Lazy as LBS
 
-main :: IO ()
-main = do
-    -- idx <- pure (newIndex "Raphael's MacBook") >>=
-    --     addDirectory "Desktop" "/Users/rapha/Desktop" >>=
-    --     addDirectory "Hannibal" "/Users/rapha/hannibal"
-    --
-    -- print idx
+import Hannibal.Filesystem.Pieces (PieceDesc (..))
 
-    _ <- getInstance defaultConfig
-    return ()
+putPiece :: PieceDesc -> LByteString -> Put
+putPiece !PieceDesc{..} content = do
+    let Just content' = Just $! LBS.toStrict content
+
+    putDocument [ "digest"    =: Binary pdDigest
+                , "content"   =: Binary content'
+                ]

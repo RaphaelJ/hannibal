@@ -15,12 +15,12 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Hannibal.Filesystem.Index
-    ( Index (..), IndexedDirectory (..)
+module Hannibal.Filesystem.FileIndex
+    ( FileIndex (..), IndexedDirectory (..)
     , newIndex, addDirectory
     ) where
 
-import ClassyPrelude hiding (Index)
+import ClassyPrelude
 
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as M
@@ -29,15 +29,20 @@ import System.Directory.Tree (AnchoredDirTree (..), readDirectoryWith)
 
 import Hannibal.Filesystem.Pieces (FileDesc, fileDesc)
 
-data Index = Index
+-- | Contains the directories and files that are shared by the current node.
+data FileIndex = FileIndex
     {
     -- | The name of the current node, as seen by the other nodes.
-      iNodeName     :: !Text
+      fiNodeName    :: !Text
+
     -- | The list of the directories that are shared by the current node.
     --
     -- Maps the names of the shared directories to a in-memory tree that
     -- contains the digest of the contained files
-    , iSharedDirs   :: !(M.Map Text IndexedDirectory)
+    , fiSharedDirs  :: !(M.Map Text IndexedDirectory)
+
+    -- | Indexes the digests of all the shared and downloaded files.
+    , fiDigests     :: !(M.Map Digest [(FilePath, FileDesc)])
     } deriving (Eq, Show)
 
 newtype IndexedDirectory = IndexedDirectory (AnchoredDirTree FileDesc)
@@ -46,11 +51,15 @@ newtype IndexedDirectory = IndexedDirectory (AnchoredDirTree FileDesc)
 --
 
 -- | Creates an new empty index.
-newIndex :: Text -> Index
-newIndex nodeName = Index nodeName M.empty
+newIndex :: Text -> FileIndex
+newIndex nodeName = FileIndex nodeName M.empty M.empty
+
+addFile :: FilePath -> FileDesc -> DigestIndex -> DigestIndex
+addFile path desc (DigestIndex idx) =
+    DigestIndex $! M.insertWith (++) (fdDigest desc) (path, desc) idx
 
 -- | Adds and indexes a new shared directory to the index.
-addDirectory :: Text -> FilePath -> Index -> IO Index
+addDirectory :: Text -> FilePath -> FileIndex -> IO FileIndex
 addDirectory dirName path idx@Index{..} = do
     cache <- IndexedDirectory <$> readDirectoryWith indexFile path
     return $! idx { iSharedDirs = M.insert dirName cache iSharedDirs }

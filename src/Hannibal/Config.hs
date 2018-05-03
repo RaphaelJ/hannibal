@@ -20,11 +20,17 @@ module Hannibal.Config where
 import ClassyPrelude
 
 import qualified Data.Map.Strict as M
+import Network.Socket (PortNumber)
 
 data Config = Config
-    { cName         :: !Text    -- ^ The name of this instance
+    { cName             :: !Text    -- ^ The name of this instance
+    -- | The UDP port used to discover local clients.
+    , cDiscoveryPort    :: PortNumber
     -- | The directories that are shared by this instance.
     --
     -- Maps shared directory names to directory paths.
-    , cSharedDirs   :: M.Map Text FilePath
+    , cSharedDirs       :: M.Map Text FilePath
     } deriving (Eq, Read, Show)
+
+defaultConfig :: Config
+defaultConfig = Config "Unamed client" 42031 M.empty

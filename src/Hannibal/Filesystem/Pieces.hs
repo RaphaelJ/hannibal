@@ -28,24 +28,27 @@ import qualified Data.Vector as V
 
 import Data.Digest.Pure.SHA (bytestringDigest, sha512)
 
+newtype Digest = Digest ByteString
+    deriving (Eq, Ord, Read, Show)
+
 pieceSize :: Integer
 pieceSize = 4 * 1024 * 1024     -- 4 MB, in bytes
 
 digest :: LByteString -> ByteString
-digest = LBS.toStrict . bytestringDigest . sha512
+digest = Digest . LBS.toStrict . bytestringDigest . sha512
 
 -- | File descriptor.
 --
 -- A file is decomposed in several pieces, and the digest of a file is the
 -- digest of the concatenation of the digests of its pieces.
 data FileDesc = FileDesc
-    { fdDigest  :: !ByteString
+    { fdDigest  :: !Digest
     , fdSize    :: !Integer
     , fdPieces  :: !(V.Vector PieceDesc)
     } deriving (Eq, Show)
 
 data PieceDesc = PieceDesc
-    { pdDigest  :: !ByteString
+    { pdDigest  :: !Digest
     , pdSize    :: !Integer
     } deriving (Eq, Show)
 
