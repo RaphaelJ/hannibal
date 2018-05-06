@@ -15,27 +15,71 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Hannibal.Instance where
+module Hannibal.Instance
+    ( Instance (..), InstanceM, InstanceIO
+    , getInstance, runWithInstance, askConfig
+    ) where
 
 import ClassyPrelude
 
 import Control.Monad.Reader (ReaderT, runReaderT)
-import Network.Socket (Socket)
+import Data.UUID (UUID)
+import Network.Socket
+      -- AddrInfoFlag (AI_CANONNAME, AI_NUMERICSERV)
+    -- , AddrInfo (addrFlags, addrProtocol, addrSocketType)
+    ( Family (AF_INET)
+    , Socket
+    -- , SockAddr (SockAddrInet, SockAddrInet6)
+    , SocketOption (Broadcast)
+    , SocketType (Datagram)
+    , defaultProtocol, setSocketOption, socket
+    -- , defaultHints, getAddrInfo, setSocketOption
+    -- , tupleToHostAddress, tupleToHostAddress6
+    )
+import System.Random (randomIO)
+import Text.Printf (printf)
 
 import Hannibal.Config (Config (..))
-import Hannibal.Network.Discovery (getDiscoverySocket)
 
--- | The main runtime structure for Hannibal.
+-- | The main runtime structure for the Hannibal client.
 data Instance = Instance
     { iConfig           :: !Config
+    -- | Nonpersistent unique identifer of the instance generated on startup.
+    , iInstanceID       :: !UUID
     -- | The UDP socket used to discover other local clients.
-    , iDiscoverySocket  :: Socket
+    , iDiscoverySocket  :: !Socket
     } deriving (Eq, Show)
 
-type RuntimeIO = ReaderT Instance IO
+getInstance :: MonadIO m => Config -> m Instance
+getInstance config =
+    Instance config <$> liftIO randomIO
+                    <*> getDiscoverySocket config
 
-runWithInstance :: RuntimeIO a -> Instance -> IO a
+-- | Opens the discovery socket.
+getDiscoverySocket :: MonadIO m => Config -> m Socket
+getDiscoverySocket Config{..} = liftIO $! do
+    -- let hints = defaultHints {
+    --       addrFlags = [AI_CANONNAME, AI_NUMERICSERV]
+    --     , addrSocketType = Datagram
+    --     }
+    --
+    -- addr:_ <- getAddrInfo (Just hints) (Just "localhost")
+    --     (Just $! show cDiscoveryPort)
+
+    sock <- socket AF_INET Datagram defaultProtocol
+    setSocketOption sock Broadcast 1
+
+    printf "Opens UDP discovery socket on %s\n" (show sock)
+
+    return sock
+
+-- | Wrapper over `ReaderT` that provides the
+type InstanceM = ReaderT Instance
+type InstanceIO = InstanceM IO
+
+runWithInstance :: InstanceM m a -> Instance -> m a
 runWithInstance = runReaderT
 
-getInstance :: MonadIO m => Config -> m Instance
-getInstance config = Instance config <$> getDiscoverySocket config
+-- | Helper that use `Reader`'s `ask` to get the instance's `Config`.
+askConfig :: Monad m => InstanceM m Config
+askConfig = iConfig <$> ask
