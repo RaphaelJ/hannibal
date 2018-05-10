@@ -20,7 +20,8 @@ module Main where
 import ClassyPrelude
 
 import Hannibal.Config (defaultConfig)
-import Hannibal.Instance (getInstance)
+import Hannibal.Instance (getInstance, runWithInstance)
+import Hannibal.Network.Discovery (announceInstance)
 
 -- import Hannibal.Filesystem.FileIndex (newIndex, addDirectory)
 
@@ -32,5 +33,4 @@ main = do
     --
     -- print idx
 
-    _ <- getInstance defaultConfig
-    return ()
+    getInstance defaultConfig >>= runWithInstance announceInstance

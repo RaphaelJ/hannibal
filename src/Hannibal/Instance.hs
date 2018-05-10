@@ -16,7 +16,7 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 module Hannibal.Instance
-    ( Instance (..), InstanceM, InstanceIO
+    ( Instance (..), InstanceT, InstanceIO
     , getInstance, runWithInstance, askConfig
     ) where
 
@@ -74,12 +74,12 @@ getDiscoverySocket Config{..} = liftIO $! do
     return sock
 
 -- | Wrapper over `ReaderT` that provides the
-type InstanceM = ReaderT Instance
-type InstanceIO = InstanceM IO
+type InstanceT = ReaderT Instance
+type InstanceIO = InstanceT IO
 
-runWithInstance :: InstanceM m a -> Instance -> m a
+runWithInstance :: InstanceT m a -> Instance -> m a
 runWithInstance = runReaderT
 
 -- | Helper that use `Reader`'s `ask` to get the instance's `Config`.
-askConfig :: Monad m => InstanceM m Config
+askConfig :: Monad m => InstanceT m Config
 askConfig = iConfig <$> ask

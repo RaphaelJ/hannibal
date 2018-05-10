@@ -23,7 +23,9 @@ import qualified Data.Map.Strict as M
 import Network.Socket (PortNumber)
 
 data Config = Config
-    { cName             :: !Text    -- ^ The name of this instance
+    {
+    -- | The name of this client
+      cName             :: !Text
     -- | The UDP port used to discover local clients.
     , cDiscoveryPort    :: PortNumber
     -- | The directories that are shared by this instance.
@@ -33,4 +35,4 @@ data Config = Config
     } deriving (Eq, Read, Show)
 
 defaultConfig :: Config
-defaultConfig = Config "Unamed client" 42031 M.empty
+defaultConfig = Config "Unamed client" 42091 M.empty
