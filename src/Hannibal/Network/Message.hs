@@ -17,8 +17,8 @@
 
 module Hannibal.Network.Message
     ( Message (..), IsMessage (..)
-    , putMessage, getMessage
-    , conduitPutMessage
+    , getMessage, putMessage
+    , conduitGetMessage, conduitPutMessage
     ) where
 
 import ClassyPrelude
@@ -29,7 +29,7 @@ import qualified Data.Conduit.Combinators as C
 import Data.Binary (Get, Put)
 import Data.Bson (Document)
 import Data.Bson.Binary (getDocument, putDocument)
-import Data.Conduit.Serialization.Binary (conduitPut)
+import Data.Conduit.Serialization.Binary (conduitGet, conduitPut)
 
 -- | A network BSON message.
 --
@@ -38,25 +38,29 @@ newtype Message = Message { mDocument :: Document }
     deriving (Eq, Ord, Show)
 
 -- | Converts data-structures to and from `Message`s.
-class IsMessage a where
-    toMessage :: a -> Message
-    fromMessage :: Message -> Maybe a
+class IsMessage msg where
+    toMessage :: msg -> Message
+    fromMessage :: Message -> Maybe msg
 
 instance IsMessage Message where
     toMessage = id
     fromMessage = Just
 
--- | Serializes a `Message`.
-putMessage :: IsMessage a => a -> Put
-putMessage = putDocument . mDocument . toMessage
-
 -- | Unserializes a `Message`.
-getMessage :: IsMessage a => Get a
+getMessage :: IsMessage msg => Get msg
 getMessage = do
     msg <- (fromMessage . Message) <$> getDocument
     case msg of
         Just msg' -> return msg'
         Nothing -> fail "Failed to parse message (`fromMessage`)."
 
-conduitPutMessage :: (IsMessage a, Monad m) => C.ConduitT a ByteString m ()
+-- | Serializes a `Message`.
+putMessage :: IsMessage msg => msg -> Put
+putMessage = putDocument . mDocument . toMessage
+
+conduitPutMessage :: (IsMessage msg, Monad m) => C.ConduitT msg ByteString m ()
 conduitPutMessage = C.map putMessage C..| conduitPut
+
+conduitGetMessage :: (IsMessage msg, MonadThrow m) =>
+    C.ConduitT ByteString msg m ()
+conduitGetMessage = conduitGet getMessage

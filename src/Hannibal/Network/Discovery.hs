@@ -16,7 +16,7 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 module Hannibal.Network.Discovery
-    ( announceInstance
+    ( announceInstance, discoveryDaemon
     ) where
 
 import ClassyPrelude
@@ -37,7 +37,8 @@ import Network.Socket
     -- , SocketType (Datagram)
     -- , defaultProtocol, socket
     -- , defaultHints, getAddrInfo, setSocketOption
-    , tupleToHostAddress, tupleToHostAddress6
+    , iNADDR_ANY, iN6ADDR_ANY
+    , bind, tupleToHostAddress, tupleToHostAddress6
     )
 import Text.Printf (printf)
 
@@ -47,8 +48,12 @@ import Hannibal.Instance
     , askConfig
     )
 import Hannibal.Network.Message
-    ( Message (..), IsMessage (..), conduitPutMessage
+    ( Message (..), IsMessage (..), conduitGetMessage, conduitPutMessage
     )
+
+-- | The maximum size of an UDP discovery packet.
+maxMessageSize :: Int
+maxMessageSize = 65507 -- UDP on IPv4 maximum payload.
 
 -- | Announce the current client instance to the local network.
 data AnnounceInstance = AnnounceInstance {
@@ -93,8 +98,18 @@ broadcastAddr family = do
             in SockAddrInet6 discoveryPort 0 (tupleToHostAddress6 ipv6Addr) 0
         _ -> error "Socket family does not support broadcast"
 
+-- | Returns a socket address that can be used to listen to the discovery UDP
+-- messages.
+listenAddr :: Monad m => Family -> InstanceT m SockAddr
+listenAddr family = do
+    discoveryPort <- cDiscoveryPort <$> askConfig
+    return $! case family of
+        AF_INET -> SockAddrInet discoveryPort iNADDR_ANY
+        AF_INET6 -> SockAddrInet6 discoveryPort 0 iN6ADDR_ANY 0
+        _ -> error "Socket family not supported"
+
+-- | Sends an UDP broadcast message announcing the client to the local network.
 announceInstance :: InstanceIO ()
-  -- -> ConduitT ByteString o WithInstanceIO ()
 announceInstance = do
     name <- cName <$> askConfig
     uuid <- iInstanceID <$> ask
@@ -110,5 +125,24 @@ announceInstance = do
     C.runConduit $!
              C.yield msg
         C..| conduitPutMessage
-        C..| C.map (\bs -> C.Message bs addr)
+        C..| C.map (\bs ->
+            assert (length bs <= maxMessageSize) (C.Message bs addr))
         C..| C.sinkToSocket sock
+
+-- | Repetitively listens to UDP messages that announce Hannibal clients.
+--
+-- Never returns.
+discoveryDaemon :: InstanceIO ThreadId
+discoveryDaemon = do
+    sock <- iDiscoverySocket <$> ask
+    addr <- listenAddr AF_INET
+
+    liftIO $! bind sock addr
+
+    fork $! do
+        C.runConduit $!
+                 C.sourceSocket sock maxMessageSize
+            C..| C.map C.msgData
+            C..| conduitGetMessage
+            C..| C.mapM_ (\AnnounceInstance {..} ->
+                liftIO $! printf "Received message: %v %v\n" aiName (show aiID))
