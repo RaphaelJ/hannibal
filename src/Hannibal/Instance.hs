@@ -30,7 +30,7 @@ import Network.Socket
     ( Family (AF_INET)
     , Socket
     -- , SockAddr (SockAddrInet, SockAddrInet6)
-    , SocketOption (Broadcast)
+    , SocketOption (Broadcast, ReusePort)
     , SocketType (Datagram)
     , defaultProtocol, setSocketOption, socket
     -- , defaultHints, getAddrInfo, setSocketOption
@@ -68,6 +68,7 @@ getDiscoverySocket Config{..} = liftIO $! do
 
     sock <- socket AF_INET Datagram defaultProtocol
     setSocketOption sock Broadcast 1
+    setSocketOption sock ReusePort 1
 
     printf "Opens UDP discovery socket on %s\n" (show sock)
 
