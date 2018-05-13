@@ -50,6 +50,7 @@ executable hannibal
                       , containers          >= 0.5.7.1 && < 0.6
                       , directory-tree      >= 0.12.1 && < 0.13
                       , lz4                 >= 0.2.3.1 && < 0.3
+                      , monad-logger        >= 0.3.28.5 && < 0.4
                       , mtl                 >= 2.2.1 && < 2.3
                       , network             >= 2.6.3.1 && < 2.7
                       , random              >= 1.1 && < 1.2
@@ -71,3 +72,4 @@ executable hannibal
                         OverloadedStrings
                         RecordWildCards
                         UndecidableInstances
+                        TemplateHaskell

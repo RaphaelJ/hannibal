@@ -28,6 +28,7 @@ import qualified Data.Conduit.Combinators as C
 import qualified Data.Conduit.Network.UDP as C
 
 import Control.Exception.Safe (Exception)
+import Control.Monad.Logger (MonadLogger, logDebug)
 import Data.Binary.Get (runGetOrFail)
 import Data.UUID (UUID, fromByteString, toByteString)
 import Network.Socket
@@ -121,15 +122,16 @@ announceInstance = do
 
     let msg = AnnounceInstance name uuid
 
-    liftIO $ printf "Broadcast message `%s` to %s\n"
-        (show $ toMessage msg) (show addr)
-
     C.runConduit $!
              C.yield msg
         C..| conduitPutMessage
         C..| C.map (\bs ->
             assert (length bs <= maxMessageSize) (C.Message bs addr))
         C..| C.sinkToSocket sock
+
+    let logMsg = pack $! printf
+            "Broadcasted discovery announce to %v\n" (show addr)
+    $(logDebug) logMsg
 
 newtype AnnounceDaemonException = AnnounceDaemonException String
     deriving Show
@@ -148,7 +150,8 @@ discoveryDaemon = do
     let conduit = C.sourceSocket sock maxMessageSize C..| datagramSink
     fork $! C.runConduit conduit
   where
-    datagramSink :: (MonadIO m, MonadThrow m) => C.ConduitT C.Message C.Void m ()
+    datagramSink :: (MonadIO m, MonadThrow m, MonadLogger m) =>
+        C.ConduitT C.Message C.Void m ()
     datagramSink = C.mapM_ (\dgram ->
         readDatagram dgram >>= uncurry handleAnnounce)
 
@@ -164,10 +167,14 @@ discoveryDaemon = do
                 | otherwise -> throw $!
                     AnnounceDaemonException "Packet continues after message."
 
-    handleAnnounce :: MonadIO m => SockAddr -> AnnounceInstance -> m ()
+    handleAnnounce :: (MonadLogger m, MonadIO m) =>
+        SockAddr -> AnnounceInstance -> m ()
     handleAnnounce addr AnnounceInstance{..} = do
-        liftIO $! printf "Received message from %v: %v %v\n"
-            (show addr) aiName (show aiID)
+        let logMsg = pack $! printf
+                "Received discovery announce from `%v` (id: %v, address: %v)\n"
+                aiName (show aiID) (show addr)
+        $(logDebug) logMsg
+
         --
         -- currentID <- iInstanceID <$> ask
         -- let !isCurrentClient = aiID == currentID

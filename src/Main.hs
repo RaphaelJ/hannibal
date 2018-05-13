@@ -35,8 +35,11 @@ main = do
 
     inst <- getInstance defaultConfig
 
-    _ <- runWithInstance discoveryDaemon inst
+    runWithInstance (do
+        _ <- discoveryDaemon
 
-    forever $ do
-        runWithInstance announceInstance inst
-        threadDelay 10000000
+        forever $! do
+            threadDelay 10000000
+            announceInstance
+
+        ) inst

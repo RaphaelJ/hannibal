@@ -22,6 +22,9 @@ module Hannibal.Instance
 
 import ClassyPrelude
 
+import Control.Monad.Logger (
+      LoggingT (..), runStderrLoggingT, runStdoutLoggingT, logInfo
+    )
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.UUID (UUID)
 import Network.Socket
@@ -39,7 +42,7 @@ import Network.Socket
 import System.Random (randomIO)
 import Text.Printf (printf)
 
-import Hannibal.Config (Config (..))
+import Hannibal.Config (Config (..), Logger (..))
 
 -- | The main runtime structure for the Hannibal client.
 data Instance = Instance
@@ -50,10 +53,10 @@ data Instance = Instance
     , iDiscoverySocket  :: !Socket
     } deriving (Eq, Show)
 
+-- | Creates a new `Instance`.
 getInstance :: MonadIO m => Config -> m Instance
 getInstance config =
-    Instance config <$> liftIO randomIO
-                    <*> getDiscoverySocket config
+    Instance config <$> liftIO randomIO <*> getDiscoverySocket config
 
 -- | Opens the discovery socket.
 getDiscoverySocket :: MonadIO m => Config -> m Socket
@@ -74,12 +77,25 @@ getDiscoverySocket Config{..} = liftIO $! do
 
     return sock
 
--- | Wrapper over `ReaderT` that provides the
-type InstanceT = ReaderT Instance
+-- | Wrapper over `ReaderT` and `LoggingT` that provides reading and logging
+-- abilities.
+type InstanceT m = LoggingT (ReaderT Instance m)
 type InstanceIO = InstanceT IO
 
-runWithInstance :: InstanceT m a -> Instance -> m a
-runWithInstance = runReaderT
+-- | Runs Hannibal monad with the given instance.
+runWithInstance :: MonadIO m =>
+    InstanceT m a -> Instance -> m a
+runWithInstance action inst =
+    let logger = cLogger $! iConfig inst
+        loggerT = case logger of
+            StdoutLogger -> runStdoutLoggingT
+            StderrLogger -> runStderrLoggingT
+        action' = do
+            let uuid = iInstanceID inst
+            $(logInfo) $! pack $! printf "Runs instance (id: `%v`)" (show uuid)
+
+            action
+    in runReaderT (loggerT action') inst
 
 -- | Helper that use `Reader`'s `ask` to get the instance's `Config`.
 askConfig :: Monad m => InstanceT m Config
