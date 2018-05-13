@@ -26,7 +26,7 @@ import ClassyPrelude
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Combinators as C
 
-import Data.Binary (Get, Put)
+import Data.Binary (Binary (..), Get, Put)
 import Data.Bson (Document)
 import Data.Bson.Binary (getDocument, putDocument)
 import Data.Conduit.Serialization.Binary (conduitGet, conduitPut)
@@ -36,6 +36,10 @@ import Data.Conduit.Serialization.Binary (conduitGet, conduitPut)
 -- All network transmissions done by Hannibal are BSON documents.
 newtype Message = Message { mDocument :: Document }
     deriving (Eq, Ord, Show)
+
+instance Binary Message where
+    put = putDocument . mDocument
+    get = Message <$> getDocument
 
 -- | Converts data-structures to and from `Message`s.
 class IsMessage msg where
@@ -49,14 +53,14 @@ instance IsMessage Message where
 -- | Unserializes a `Message`.
 getMessage :: IsMessage msg => Get msg
 getMessage = do
-    msg <- (fromMessage . Message) <$> getDocument
-    case msg of
-        Just msg' -> return msg'
-        Nothing -> fail "Failed to parse message (`fromMessage`)."
+    mMsg <- fromMessage <$> get
+    case mMsg of
+        Just msg -> return msg
+        Nothing -> fail "Failed to read message."
 
 -- | Serializes a `Message`.
 putMessage :: IsMessage msg => msg -> Put
-putMessage = putDocument . mDocument . toMessage
+putMessage = put . toMessage
 
 conduitPutMessage :: (IsMessage msg, Monad m) => C.ConduitT msg ByteString m ()
 conduitPutMessage = C.map putMessage C..| conduitPut

@@ -27,6 +27,8 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.Combinators as C
 import qualified Data.Conduit.Network.UDP as C
 
+import Control.Exception.Safe (Exception)
+import Data.Binary.Get (runGetOrFail)
 import Data.UUID (UUID, fromByteString, toByteString)
 import Network.Socket
     --   AddrInfoFlag (AI_CANONNAME, AI_NUMERICSERV)
@@ -48,7 +50,7 @@ import Hannibal.Instance
     , askConfig
     )
 import Hannibal.Network.Message
-    ( Message (..), IsMessage (..), conduitGetMessage, conduitPutMessage
+    ( Message (..), IsMessage (..), conduitPutMessage, getMessage
     )
 
 -- | The maximum size of an UDP discovery packet.
@@ -129,9 +131,13 @@ announceInstance = do
             assert (length bs <= maxMessageSize) (C.Message bs addr))
         C..| C.sinkToSocket sock
 
--- | Repetitively listens to UDP messages that announce Hannibal clients.
---
--- Never returns.
+newtype AnnounceDaemonException = AnnounceDaemonException String
+    deriving Show
+
+instance Exception AnnounceDaemonException
+
+-- | Forks a thread that repetitively listens to UDP messages that announce
+-- Hannibal clients.
 discoveryDaemon :: InstanceIO ThreadId
 discoveryDaemon = do
     sock <- iDiscoverySocket <$> ask
@@ -139,10 +145,32 @@ discoveryDaemon = do
 
     liftIO $! bind sock addr
 
-    fork $! do
-        C.runConduit $!
-                 C.sourceSocket sock maxMessageSize
-            C..| C.map C.msgData
-            C..| conduitGetMessage
-            C..| C.mapM_ (\AnnounceInstance {..} ->
-                liftIO $! printf "Received message: %v %v\n" aiName (show aiID))
+    let conduit = C.sourceSocket sock maxMessageSize C..| datagramSink
+    fork $! C.runConduit conduit
+  where
+    datagramSink :: (MonadIO m, MonadThrow m) => C.ConduitT C.Message C.Void m ()
+    datagramSink = C.mapM_ (\dgram ->
+        readDatagram dgram >>= uncurry handleAnnounce)
+
+    -- | Tries to read the UDP discovery datagram, or throws a
+    -- `AnnounceDaemonException`.
+    readDatagram :: MonadThrow m => C.Message -> m (SockAddr, AnnounceInstance)
+    readDatagram (C.Message msgData msgAddr) =
+        case runGetOrFail getMessage $! LBS.fromStrict msgData of
+            Left (_, _, errorMsg) ->
+                throw $! AnnounceDaemonException errorMsg
+            Right (remaining, _, msg)
+                | LBS.null remaining -> return (msgAddr, msg)
+                | otherwise -> throw $!
+                    AnnounceDaemonException "Packet continues after message."
+
+    handleAnnounce :: MonadIO m => SockAddr -> AnnounceInstance -> m ()
+    handleAnnounce addr AnnounceInstance{..} = do
+        liftIO $! printf "Received message from %v: %v %v\n"
+            (show addr) aiName (show aiID)
+        --
+        -- currentID <- iInstanceID <$> ask
+        -- let !isCurrentClient = aiID == currentID
+        --
+        -- unless isCurrentClient $ do
+        --     return ()
