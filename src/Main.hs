@@ -22,6 +22,7 @@ import ClassyPrelude
 import Hannibal.Config (defaultConfig)
 import Hannibal.Instance (getInstance, runWithInstance)
 import Hannibal.Network.Discovery (announceInstance, discoveryDaemon)
+import Hannibal.Network.Control (controlDaemon)
 
 -- import Hannibal.Filesystem.FileIndex (newIndex, addDirectory)
 
@@ -37,6 +38,7 @@ main = do
 
     runWithInstance (do
         _ <- discoveryDaemon
+        _ <- controlDaemon
 
         forever $! do
             threadDelay 10000000

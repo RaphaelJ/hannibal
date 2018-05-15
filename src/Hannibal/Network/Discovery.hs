@@ -28,18 +28,12 @@ import qualified Data.Conduit.Combinators as C
 import qualified Data.Conduit.Network.UDP as C
 
 import Control.Exception.Safe (Exception)
-import Control.Monad.Logger (MonadLogger, logDebug)
+import Control.Monad.Logger (MonadLogger, logDebug, logInfo)
 import Data.Binary.Get (runGetOrFail)
 import Data.UUID (UUID, fromByteString, toByteString)
 import Network.Socket
-    --   AddrInfoFlag (AI_CANONNAME, AI_NUMERICSERV)
-    -- , AddrInfo (addrFlags, addrProtocol, addrSocketType),
     ( Family (AF_INET, AF_INET6)
-    -- , Socket
     , SockAddr (SockAddrInet, SockAddrInet6)
-    -- , SocketType (Datagram)
-    -- , defaultProtocol, socket
-    -- , defaultHints, getAddrInfo, setSocketOption
     , iNADDR_ANY, iN6ADDR_ANY
     , bind, tupleToHostAddress, tupleToHostAddress6
     )
@@ -130,7 +124,7 @@ announceInstance = do
         C..| C.sinkToSocket sock
 
     let logMsg = pack $! printf
-            "Broadcasted discovery announce to %v\n" (show addr)
+            "Broadcasted discovery announce to %v" (show addr)
     $(logDebug) logMsg
 
 newtype AnnounceDaemonException = AnnounceDaemonException String
@@ -148,7 +142,13 @@ discoveryDaemon = do
     liftIO $! bind sock addr
 
     let conduit = C.sourceSocket sock maxMessageSize C..| datagramSink
-    fork $! C.runConduit conduit
+    threadId <- fork $! C.runConduit conduit
+
+    let logMsg = pack $! printf
+            "Discovery deamon listening on `%v`" (show addr)
+    $(logInfo) logMsg
+
+    return threadId
   where
     datagramSink :: (MonadIO m, MonadThrow m, MonadLogger m) =>
         C.ConduitT C.Message C.Void m ()
@@ -171,7 +171,7 @@ discoveryDaemon = do
         SockAddr -> AnnounceInstance -> m ()
     handleAnnounce addr AnnounceInstance{..} = do
         let logMsg = pack $! printf
-                "Received discovery announce from `%v` (id: %v, address: %v)\n"
+                "Received discovery announce from `%v` (id: %v, address: %v)"
                 aiName (show aiID) (show addr)
         $(logDebug) logMsg
 

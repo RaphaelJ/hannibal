@@ -35,6 +35,10 @@ data Config = Config
       cName             :: !Text
     -- | The UDP port used to discover local clients.
     , cDiscoveryPort    :: !PortNumber
+    -- | The TCP port used to communicate with other clients.
+    --
+    -- If `Nothing`, uses a random availaible TCP port.
+    , cControlPort      :: !(Maybe PortNumber)
     -- | The directories that are shared by this instance.
     --
     -- Maps shared directory names to directory paths.
@@ -44,4 +48,4 @@ data Config = Config
     } deriving (Eq, Read, Show)
 
 defaultConfig :: Config
-defaultConfig = Config "Unamed client" 42091 M.empty StdoutLogger
+defaultConfig = Config "Unamed client" 42091 Nothing M.empty StdoutLogger

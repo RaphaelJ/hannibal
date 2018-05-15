@@ -28,16 +28,11 @@ import Control.Monad.Logger (
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.UUID (UUID)
 import Network.Socket
-      -- AddrInfoFlag (AI_CANONNAME, AI_NUMERICSERV)
-    -- , AddrInfo (addrFlags, addrProtocol, addrSocketType)
     ( Family (AF_INET)
     , Socket
-    -- , SockAddr (SockAddrInet, SockAddrInet6)
     , SocketOption (Broadcast, ReusePort)
-    , SocketType (Datagram)
+    , SocketType (Datagram, Stream)
     , defaultProtocol, setSocketOption, socket
-    -- , defaultHints, getAddrInfo, setSocketOption
-    -- , tupleToHostAddress, tupleToHostAddress6
     )
 import System.Random (randomIO)
 import Text.Printf (printf)
@@ -51,31 +46,29 @@ data Instance = Instance
     , iInstanceID       :: !UUID
     -- | The UDP socket used to discover other local clients.
     , iDiscoverySocket  :: !Socket
+    -- | The TCP socket used to communicate with other clients.
+    , iControlSocket    :: !Socket
     } deriving (Eq, Show)
 
 -- | Creates a new `Instance`.
 getInstance :: MonadIO m => Config -> m Instance
 getInstance config =
-    Instance config <$> liftIO randomIO <*> getDiscoverySocket config
+    Instance config <$> liftIO randomIO
+                    <*> getDiscoverySocket config
+                    <*> getControlSocket config
 
--- | Opens the discovery socket.
+-- | Opens the discovery UDP socket.
 getDiscoverySocket :: MonadIO m => Config -> m Socket
 getDiscoverySocket Config{..} = liftIO $! do
-    -- let hints = defaultHints {
-    --       addrFlags = [AI_CANONNAME, AI_NUMERICSERV]
-    --     , addrSocketType = Datagram
-    --     }
-    --
-    -- addr:_ <- getAddrInfo (Just hints) (Just "localhost")
-    --     (Just $! show cDiscoveryPort)
-
     sock <- socket AF_INET Datagram defaultProtocol
     setSocketOption sock Broadcast 1
     setSocketOption sock ReusePort 1
 
-    printf "Opens UDP discovery socket on %s\n" (show sock)
-
     return sock
+
+-- | Opens the control UDP socket.
+getControlSocket :: MonadIO m => Config -> m Socket
+getControlSocket Config{..} = liftIO $! socket AF_INET Stream defaultProtocol
 
 -- | Wrapper over `ReaderT` and `LoggingT` that provides reading and logging
 -- abilities.
