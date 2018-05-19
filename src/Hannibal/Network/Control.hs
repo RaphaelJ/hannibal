@@ -21,11 +21,12 @@ module Hannibal.Network.Control
 
 import ClassyPrelude
 
+import qualified Data.Bson as B
+import qualified Data.Conduit as C
+
 import Control.Monad.Logger (logInfo)
-import Data.Conduit.Network (forkTCPServer)
-import Data.Streaming.Network
-    ( serverSettingsTCPSocket, appLocalAddr, appSockAddr
-    )
+import Data.Conduit.Network (appSource, appSink, appSockAddr, forkTCPServer)
+import Data.Streaming.Network (serverSettingsTCPSocket)
 import Network.Socket
     ( Family (AF_INET, AF_INET6), PortNumber
     , SockAddr (SockAddrInet, SockAddrInet6)
@@ -35,6 +36,42 @@ import Text.Printf (printf)
 
 import Hannibal.Config (Config (..))
 import Hannibal.Instance (Instance (..), InstanceT, InstanceIO, askConfig)
+import Hannibal.Network.Message
+    ( Message (..), IsMessage (..), conduitGetMessage, conduitPutMessage
+    )
+import Hannibal.UUID (UUID)
+
+--
+-- Messages
+--
+
+data ControlMessage =
+      -- | Authenticates the Hannibal instance to the other peer.
+      --
+      -- This is sent by both remote parts when the connection is initiated.
+      HelloMessage {
+          hmName    :: !Text -- ^ The name of the instance.
+        , hmID      :: !UUID -- ^ The ID of the instance.
+      }
+    deriving (Eq, Show)
+
+instance IsMessage ControlMessage where
+    toMessage HelloMessage{..} = Message
+        [ "type"    B.=: asText "hello"
+        , "name"    B.=: hmName
+        , "id"      B.=: hmID
+        ]
+
+    fromMessage (Message doc) = do
+        type_ <- doc B.!? "type" :: Maybe Text
+
+        case type_ of
+            "hello" -> HelloMessage <$> doc B.!? "name" <*> doc B.!? "id"
+            _ -> Nothing
+
+--
+-- Functions
+--
 
 -- | Returns a socket address that can be used to listen to control TCP
 -- connections.
@@ -48,7 +85,36 @@ listenAddr family = do
         _ -> error "Socket family not supported"
 
 listenQueueSize :: Int
-listenQueueSize = max maxListenQueue 32
+listenQueueSize = max maxListenQueue 128
+
+helloMessage :: Monad m => InstanceT m ControlMessage
+helloMessage = do
+    inst <- ask
+    config <- askConfig
+    return $! HelloMessage (cName config) (iInstanceID inst)
+
+--
+-- Handle client connection
+--
+
+-- | Handles an incomming client connection from a peer.
+clientHandle ::
+       (MonadIO m, MonadThrow m)
+    => SockAddr
+    -> C.ConduitT ControlMessage ControlMessage (InstanceT m) ()
+clientHandle peerAddr = do
+    $(logInfo) $! pack $! printf
+        "Handle incoming control link from `%v`" (show peerAddr)
+
+    -- Waits for the hello message, and respond with another hello message.
+    inHelloMsg <- C.await
+    case inHelloMsg of
+        Just (HelloMessage {..}) -> lift helloMessage >>= C.yield
+        _ -> error  "Expected hello message"
+
+--
+-- Daemon
+--
 
 -- | Forks a thread that repetitively listens to incomming TCP connections on
 -- the control socket.
@@ -67,18 +133,22 @@ controlDaemon = do
     -- When provided `0` as a port number, `bind` will randomly choose a port.
     let setts = serverSettingsTCPSocket sock
 
-    threadId <- forkTCPServer setts handleClient
+    threadId <- forkTCPServer setts connectionHandle
 
     (addr', port) <- getSocketAddrPort sock
 
-    let logMsg = pack $! printf "Control deamon listening on `%v`," (show addr')
+    let logMsg = pack $! printf "Control deamon listening on `%v`" (show addr')
     $(logInfo) logMsg
 
     return (threadId, port)
   where
-    handleClient appData = do
-        print (appSockAddr appData)
-        print (appLocalAddr appData)
+    connectionHandle appData =
+        C.runConduit $!
+                 appSource appData
+            C..| conduitGetMessage
+            C..| clientHandle (appSockAddr appData)
+            C..| conduitPutMessage
+            C..| appSink appData
 
     getSocketAddrPort sock = do
         addr <- liftIO $! getSocketName sock

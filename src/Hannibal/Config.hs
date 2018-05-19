@@ -48,4 +48,4 @@ data Config = Config
     } deriving (Eq, Read, Show)
 
 defaultConfig :: Config
-defaultConfig = Config "Unamed client" 42091 Nothing M.empty StdoutLogger
+defaultConfig = Config "Unamed client" 60391 Nothing M.empty StdoutLogger

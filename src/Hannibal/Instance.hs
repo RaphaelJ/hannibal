@@ -26,7 +26,6 @@ import Control.Monad.Logger (
       LoggingT (..), runStderrLoggingT, runStdoutLoggingT, logInfo
     )
 import Control.Monad.Reader (ReaderT, runReaderT)
-import Data.UUID (UUID)
 import Network.Socket
     ( Family (AF_INET)
     , Socket
@@ -38,6 +37,7 @@ import System.Random (randomIO)
 import Text.Printf (printf)
 
 import Hannibal.Config (Config (..), Logger (..))
+import Hannibal.UUID (UUID)
 
 -- | The main runtime structure for the Hannibal client.
 data Instance = Instance

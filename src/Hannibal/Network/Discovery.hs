@@ -30,7 +30,6 @@ import qualified Data.Conduit.Network.UDP as C
 import Control.Exception.Safe (Exception)
 import Control.Monad.Logger (MonadLogger, logDebug, logInfo)
 import Data.Binary.Get (runGetOrFail)
-import Data.UUID (UUID, fromByteString, toByteString)
 import Network.Socket
     ( Family (AF_INET, AF_INET6)
     , SockAddr (SockAddrInet, SockAddrInet6)
@@ -47,39 +46,23 @@ import Hannibal.Instance
 import Hannibal.Network.Message
     ( Message (..), IsMessage (..), conduitPutMessage, getMessage
     )
+import Hannibal.UUID (UUID)
 
 -- | The maximum size of an UDP discovery packet.
 maxMessageSize :: Int
 maxMessageSize = 65507 -- UDP on IPv4 maximum payload.
 
 -- | Announce the current client instance to the local network.
-data AnnounceInstance = AnnounceInstance {
-      aiName    :: !Text
-    , aiID      :: !UUID
-    } deriving (Eq, Show)
-
-newtype BsonUUID = BsonUUID { buVal :: UUID }
+data AnnounceMessage = AnnounceMessage { amID :: !UUID }
     deriving (Eq, Show)
 
-instance B.Val BsonUUID where
-    val = B.val . B.UUID . LBS.toStrict . toByteString . buVal
-
-    cast' (B.Uuid (B.UUID bs)) =
-        map BsonUUID $! fromByteString $! LBS.fromStrict bs
-    cast' _ = Nothing
-
-instance IsMessage AnnounceInstance where
-    toMessage AnnounceInstance{..} = Message
-        [ "name"    B.=: aiName
-        , "id"      B.=: (B.UUID $! LBS.toStrict $! toByteString aiID)
+instance IsMessage AnnounceMessage where
+    toMessage AnnounceMessage{..} = Message
+        [ "type"    B.=: asText "announce"
+        , "id"      B.=: amID
         ]
 
-    fromMessage (Message doc) =
-        AnnounceInstance
-            <$> doc B.!? "name"
-            <*> (do
-                B.UUID uuid <- doc B.!? "id"
-                fromByteString $! LBS.fromStrict uuid)
+    fromMessage (Message doc) = AnnounceMessage <$> doc B.!? "id"
 
 -- | Returns a broadcast socket address for the given socket protocol family.
 broadcastAddr :: Monad m => Family -> InstanceT m SockAddr
@@ -108,13 +91,12 @@ listenAddr family = do
 -- | Sends an UDP broadcast message announcing the client to the local network.
 announceInstance :: InstanceIO ()
 announceInstance = do
-    name <- cName <$> askConfig
     uuid <- iInstanceID <$> ask
 
     sock <- iDiscoverySocket <$> ask
     addr <- broadcastAddr AF_INET
 
-    let msg = AnnounceInstance name uuid
+    let msg = AnnounceMessage uuid
 
     C.runConduit $!
              C.yield msg
@@ -157,7 +139,7 @@ discoveryDaemon = do
 
     -- | Tries to read the UDP discovery datagram, or throws a
     -- `AnnounceDaemonException`.
-    readDatagram :: MonadThrow m => C.Message -> m (SockAddr, AnnounceInstance)
+    readDatagram :: MonadThrow m => C.Message -> m (SockAddr, AnnounceMessage)
     readDatagram (C.Message msgData msgAddr) =
         case runGetOrFail getMessage $! LBS.fromStrict msgData of
             Left (_, _, errorMsg) ->
@@ -168,16 +150,15 @@ discoveryDaemon = do
                     AnnounceDaemonException "Packet continues after message."
 
     handleAnnounce :: (MonadLogger m, MonadIO m) =>
-        SockAddr -> AnnounceInstance -> m ()
-    handleAnnounce addr AnnounceInstance{..} = do
-        let logMsg = pack $! printf
-                "Received discovery announce from `%v` (id: %v, address: %v)"
-                aiName (show aiID) (show addr)
-        $(logDebug) logMsg
+        SockAddr -> AnnounceMessage -> m ()
+    handleAnnounce addr AnnounceMessage{..} = do
+        $(logDebug) $! pack $! printf
+            "Received discovery announce (id: %v, address: %v)"
+            (show amID) (show addr)
 
         --
         -- currentID <- iInstanceID <$> ask
-        -- let !isCurrentClient = aiID == currentID
+        -- let !isCurrentClient = amID == currentID
         --
         -- unless isCurrentClient $ do
         --     return ()
