@@ -15,10 +15,12 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Hannibal.Filesystem.FileIndex
-    ( FileIndex (..), IndexedDirectory (..)
-    , newIndex, addDirectory
-    ) where
+module Hannibal.Filesystem.FileIndex (
+    FileIndex (..),
+    IndexedDirectory (..),
+    newIndex,
+    addDirectory,
+) where
 
 import ClassyPrelude
 
@@ -27,42 +29,34 @@ import qualified Data.Map.Strict as M
 
 import System.Directory.Tree (AnchoredDirTree (..), readDirectoryWith)
 
-import Hannibal.Filesystem.Pieces (FileDesc, fileDesc)
+import Hannibal.Filesystem.FileDesc (Digest, FileDesc, fileDesc)
 
 -- | Contains the directories and files that are shared by the current node.
 data FileIndex = FileIndex
-    {
-    -- | The name of the current node, as seen by the other nodes.
-      fiNodeName    :: !Text
-
-    -- | The list of the directories that are shared by the current node.
-    --
-    -- Maps the names of the shared directories to a in-memory tree that
-    -- contains the digest of the contained files
-    , fiSharedDirs  :: !(M.Map Text IndexedDirectory)
-
-    -- | Indexes the digests of all the shared and downloaded files.
-    , fiDigests     :: !(M.Map Digest [(FilePath, FileDesc)])
-    } deriving (Eq, Show)
+    { -- | The name of the current node, as seen by the other nodes.
+      fiNodeName :: !Text
+    , -- | The list of the directories that are shared by the current node.
+      --
+      -- Maps the names of the shared directories to a in-memory tree that
+      -- contains the digest of the contained files
+      fiSharedDirs :: !(M.Map Text IndexedDirectory)
+    , -- | Indexes the digests of all the shared and downloaded files.
+      fiDigests :: !(M.Map Digest [(FilePath, FileDesc)])
+    }
+    deriving (Eq, Show)
 
 newtype IndexedDirectory = IndexedDirectory (AnchoredDirTree FileDesc)
     deriving (Eq, Show)
-
---
 
 -- | Creates an new empty index.
 newIndex :: Text -> FileIndex
 newIndex nodeName = FileIndex nodeName M.empty M.empty
 
-addFile :: FilePath -> FileDesc -> DigestIndex -> DigestIndex
-addFile path desc (DigestIndex idx) =
-    DigestIndex $! M.insertWith (++) (fdDigest desc) (path, desc) idx
-
 -- | Adds and indexes a new shared directory to the index.
 addDirectory :: Text -> FilePath -> FileIndex -> IO FileIndex
-addDirectory dirName path idx@Index{..} = do
+addDirectory dirName path idx@FileIndex{..} = do
     cache <- IndexedDirectory <$> readDirectoryWith indexFile path
-    return $! idx { iSharedDirs = M.insert dirName cache iSharedDirs }
+    return $! idx{fiSharedDirs = M.insert dirName cache fiSharedDirs}
   where
     indexFile filePath = do
         content <- LBS.readFile filePath

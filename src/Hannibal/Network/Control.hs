@@ -14,10 +14,9 @@
 --
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
-
-module Hannibal.Network.Control
-    ( controlDaemon
-    ) where
+module Hannibal.Network.Control (
+    controlDaemon,
+) where
 
 import ClassyPrelude
 
@@ -25,42 +24,51 @@ import qualified Data.Bson as B
 import qualified Data.Conduit as C
 
 import Control.Monad.Logger (logInfo)
-import Data.Conduit.Network (appSource, appSink, appSockAddr, forkTCPServer)
+import Data.Conduit.Network (appSink, appSockAddr, appSource, forkTCPServer)
 import Data.Streaming.Network (serverSettingsTCPSocket)
-import Network.Socket
-    ( Family (AF_INET, AF_INET6), PortNumber
-    , SockAddr (SockAddrInet, SockAddrInet6)
-    , iNADDR_ANY, iN6ADDR_ANY, bind, getSocketName, listen, maxListenQueue
-    )
+import Network.Socket (
+    Family (AF_INET, AF_INET6),
+    PortNumber,
+    SockAddr (SockAddrInet, SockAddrInet6),
+    bind,
+    getSocketName,
+    listen,
+    maxListenQueue,
+ )
 import Text.Printf (printf)
 
 import Hannibal.Config (Config (..))
-import Hannibal.Instance (Instance (..), InstanceT, InstanceIO, askConfig)
-import Hannibal.Network.Message
-    ( Message (..), IsMessage (..), conduitGetMessage, conduitPutMessage
-    )
+import Hannibal.Instance (Instance (..), InstanceIO, InstanceT, askConfig)
+import Hannibal.Network.Message (
+    IsMessage (..),
+    SerializedMessage (..),
+    conduitGetMessage,
+    conduitPutMessage,
+ )
 import Hannibal.UUID (UUID)
 
 --
 -- Messages
 --
 
-data ControlMessage =
-      -- | Authenticates the Hannibal instance to the other peer.
-      --
-      -- This is sent by both remote parts when the connection is initiated.
-      HelloMessage {
-          hmName    :: !Text -- ^ The name of the instance.
-        , hmID      :: !UUID -- ^ The ID of the instance.
-      }
+data ControlMessage = -- | Authenticates the Hannibal instance to the other peer.
+    --
+    -- This is sent by both remote parts when the connection is initiated.
+    HelloMessage
+    { -- | The name of the instance.
+      hmName :: !Text
+    , -- | The ID of the instance.
+      hmID :: !UUID
+    }
     deriving (Eq, Show)
 
 instance IsMessage ControlMessage where
-    toMessage HelloMessage{..} = Message
-        [ "type"    B.=: asText "hello"
-        , "name"    B.=: hmName
-        , "id"      B.=: hmID
-        ]
+    toMessage HelloMessage{..} =
+        Message
+            [ "type" B.=: asText "hello"
+            , "name" B.=: hmName
+            , "id" B.=: hmID
+            ]
 
     fromMessage (Message doc) = do
         type_ <- doc B.!? "type" :: Maybe Text
@@ -73,15 +81,20 @@ instance IsMessage ControlMessage where
 -- Functions
 --
 
--- | Returns a socket address that can be used to listen to control TCP
--- connections.
+{- | Returns a socket address that can be used to listen to control TCP
+ connections.
+-}
 listenAddr :: Monad m => Family -> InstanceT m SockAddr
 listenAddr family = do
     -- Uses port `0` when not defined to automatically allocate a port.
     controlPort <- (fromMaybe 0 . cControlPort) <$> askConfig
     return $! case family of
-        AF_INET -> SockAddrInet controlPort iNADDR_ANY
-        AF_INET6 -> SockAddrInet6 controlPort 0 iN6ADDR_ANY 0
+        AF_INET ->
+            let ipv4Addr = tupleToHostAddress (0, 0, 0, 0)
+             in SockAddrInet controlPort ipv4Addr
+        AF_INET6 ->
+            let ipv6Addr = tupleToHostAddress6 (0, 0, 0, 0, 0, 0, 0, 0)
+             in SockAddrInet6 controlPort 0 ipv6Addr 0
         _ -> error "Socket family not supported"
 
 listenQueueSize :: Int
@@ -99,28 +112,31 @@ helloMessage = do
 
 -- | Handles an incomming client connection from a peer.
 clientHandle ::
-       (MonadIO m, MonadThrow m)
-    => SockAddr
-    -> C.ConduitT ControlMessage ControlMessage (InstanceT m) ()
+    (MonadIO m, MonadThrow m) =>
+    SockAddr ->
+    C.ConduitT ControlMessage ControlMessage (InstanceT m) ()
 clientHandle peerAddr = do
-    $(logInfo) $! pack $! printf
-        "Handle incoming control link from `%v`" (show peerAddr)
+    $(logInfo) $! pack
+        $! printf
+            "Handle incoming control link from `%v`"
+            (show peerAddr)
 
     -- Waits for the hello message, and respond with another hello message.
     inHelloMsg <- C.await
     case inHelloMsg of
-        Just (HelloMessage {..}) -> lift helloMessage >>= C.yield
-        _ -> error  "Expected hello message"
+        Just (HelloMessage{..}) -> lift helloMessage >>= C.yield
+        _ -> error "Expected hello message"
 
 --
 -- Daemon
 --
 
--- | Forks a thread that repetitively listens to incomming TCP connections on
--- the control socket.
---
--- Returns the port the thread ID of the server and the TCP port it's listening
--- on.
+{- | Forks a thread that repetitively listens to incomming TCP connections on
+ the control socket.
+
+ Returns the port the thread ID of the server and the TCP port it's listening
+ on.
+-}
 controlDaemon :: InstanceIO (ThreadId, PortNumber)
 controlDaemon = do
     sock <- iControlSocket <$> ask
@@ -143,8 +159,8 @@ controlDaemon = do
     return (threadId, port)
   where
     connectionHandle appData =
-        C.runConduit $!
-                 appSource appData
+        C.runConduit
+            $! appSource appData
             C..| conduitGetMessage
             C..| clientHandle (appSockAddr appData)
             C..| conduitPutMessage

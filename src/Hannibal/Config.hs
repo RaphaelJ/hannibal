@@ -15,10 +15,11 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Hannibal.Config
-    ( Config (..), Logger (..)
-    , defaultConfig
-    ) where
+module Hannibal.Config (
+    Config (..),
+    Logger (..),
+    defaultConfig,
+) where
 
 import ClassyPrelude
 
@@ -30,22 +31,22 @@ data Logger = StderrLogger | StdoutLogger
     deriving (Eq, Read, Show)
 
 data Config = Config
-    {
-    -- | The name of this client
-      cName             :: !Text
-    -- | The UDP port used to discover local clients.
-    , cDiscoveryPort    :: !PortNumber
-    -- | The TCP port used to communicate with other clients.
-    --
-    -- If `Nothing`, uses a random availaible TCP port.
-    , cControlPort      :: !(Maybe PortNumber)
-    -- | The directories that are shared by this instance.
-    --
-    -- Maps shared directory names to directory paths.
-    , cSharedDirs       :: M.Map Text FilePath
-    -- The logger transformers used by the application.
-    , cLogger           :: Logger
-    } deriving (Eq, Read, Show)
+    { -- | The name of this client
+      cName :: !Text
+    , -- | The UDP port used to discover local clients.
+      cDiscoveryPort :: !PortNumber
+    , -- | The TCP port used to communicate with other clients.
+      --
+      -- If `Nothing`, uses a random availaible TCP port.
+      cControlPort :: !(Maybe PortNumber)
+    , -- | The directories that are shared by this instance.
+      --
+      -- Maps shared directory names to directory paths.
+      cSharedDirs :: M.Map Text FilePath
+    , -- The logger transformers used by the application.
+      cLogger :: Logger
+    }
+    deriving (Eq, Read, Show)
 
 defaultConfig :: Config
 defaultConfig = Config "Unamed client" 60391 Nothing M.empty StdoutLogger

@@ -1,6 +1,6 @@
 -- Hannibal, a P2P client for local area networks.
 --
--- Copyright (C) 2016, 2017, 2018 Raphael Javaux <raphaeljavaux@gmail.com>
+-- Copyright (C) 2016, 2017, 2018, 2022 Raphael Javaux <raphaeljavaux@gmail.com>
 --
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -15,69 +15,65 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Hannibal.Instance
-    ( Instance (..), InstanceT, InstanceIO
-    , getInstance, runWithInstance, askConfig
-    ) where
+module Hannibal.Instance (
+    Instance (..),
+    InstanceT,
+    InstanceIO,
+    getInstance,
+    runWithInstance,
+    askConfig,
+    forkInstance,
+) where
 
 import ClassyPrelude
 
+import Control.Concurrent (ThreadId, forkIO)
 import Control.Monad.Logger (
-      LoggingT (..), runStderrLoggingT, runStdoutLoggingT, logInfo
-    )
-import Control.Monad.Reader (ReaderT, runReaderT)
-import Network.Socket
-    ( Family (AF_INET)
-    , Socket
-    , SocketOption (Broadcast, ReusePort)
-    , SocketType (Datagram, Stream)
-    , defaultProtocol, setSocketOption, socket
-    )
+    LoggingT (..),
+    logInfo,
+    runStderrLoggingT,
+    runStdoutLoggingT,
+ )
+import Network.Socket (
+    Socket,
+ )
 import System.Random (randomIO)
 import Text.Printf (printf)
 
 import Hannibal.Config (Config (..), Logger (..))
+import Hannibal.Network.Sockets (getControlSocket, getDiscoverySocket)
 import Hannibal.UUID (UUID)
 
 -- | The main runtime structure for the Hannibal client.
 data Instance = Instance
-    { iConfig           :: !Config
-    -- | Nonpersistent unique identifer of the instance generated on startup.
-    , iInstanceID       :: !UUID
-    -- | The UDP socket used to discover other local clients.
-    , iDiscoverySocket  :: !Socket
-    -- | The TCP socket used to communicate with other clients.
-    , iControlSocket    :: !Socket
-    } deriving (Eq, Show)
+    { iConfig :: !Config
+    , -- | Nonpersistent unique identifer of the instance generated on startup.
+      iInstanceID :: !UUID
+    , -- | The UDP socket used to discover other local clients.
+      iDiscoverySocket :: !Socket
+    , -- | The TCP socket used to communicate with other clients.
+      iControlServerSocket :: !Socket
+    }
+    deriving (Eq, Show)
 
 -- | Creates a new `Instance`.
 getInstance :: MonadIO m => Config -> m Instance
 getInstance config =
     Instance config <$> liftIO randomIO
-                    <*> getDiscoverySocket config
-                    <*> getControlSocket config
+        <*> getDiscoverySocket
+        <*> getControlSocket
 
--- | Opens the discovery UDP socket.
-getDiscoverySocket :: MonadIO m => Config -> m Socket
-getDiscoverySocket Config{..} = liftIO $! do
-    sock <- socket AF_INET Datagram defaultProtocol
-    setSocketOption sock Broadcast 1
-    setSocketOption sock ReusePort 1
-
-    return sock
-
--- | Opens the control UDP socket.
-getControlSocket :: MonadIO m => Config -> m Socket
-getControlSocket Config{..} = liftIO $! socket AF_INET Stream defaultProtocol
-
--- | Wrapper over `ReaderT` and `LoggingT` that provides reading and logging
--- abilities.
+-- | Wrapper over `ReaderT` and `LoggingT` that provides reading and logging abilities.
 type InstanceT m = LoggingT (ReaderT Instance m)
+
 type InstanceIO = InstanceT IO
 
 -- | Runs Hannibal monad with the given instance.
-runWithInstance :: MonadIO m =>
-    InstanceT m a -> Instance -> m a
+runWithInstance ::
+    MonadIO m =>
+    InstanceT m a ->
+    Instance ->
+    m a
 runWithInstance action inst =
     let logger = cLogger $! iConfig inst
         loggerT = case logger of
@@ -88,7 +84,13 @@ runWithInstance action inst =
             $(logInfo) $! pack $! printf "Runs instance (id: `%v`)" (show uuid)
 
             action
-    in runReaderT (loggerT action') inst
+     in runReaderT (loggerT action') inst
+
+-- | Fork the current instance in a new lightweight thread.
+forkInstance :: MonadIO m => InstanceIO () -> InstanceT m ThreadId
+forkInstance action = do
+    inst <- ask
+    liftIO $! forkIO $! runWithInstance action inst
 
 -- | Helper that use `Reader`'s `ask` to get the instance's `Config`.
 askConfig :: Monad m => InstanceT m Config

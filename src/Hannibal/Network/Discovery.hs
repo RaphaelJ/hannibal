@@ -15,9 +15,10 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Hannibal.Network.Discovery
-    ( announceInstance, discoveryDaemon
-    ) where
+module Hannibal.Network.Discovery (
+    announceInstance,
+    discoveryDaemon,
+) where
 
 import ClassyPrelude
 
@@ -27,25 +28,27 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.Combinators as C
 import qualified Data.Conduit.Network.UDP as C
 
-import Control.Exception.Safe (Exception)
+import Conduit (MonadThrow, throwM)
+import Control.Concurrent (ThreadId)
 import Control.Monad.Logger (MonadLogger, logDebug, logInfo)
 import Data.Binary.Get (runGetOrFail)
-import Network.Socket
-    ( Family (AF_INET, AF_INET6)
-    , SockAddr (SockAddrInet, SockAddrInet6)
-    , iNADDR_ANY, iN6ADDR_ANY
-    , bind, tupleToHostAddress, tupleToHostAddress6
-    )
+import Network.Socket (
+    Family (AF_INET, AF_INET6),
+    SockAddr (SockAddrInet, SockAddrInet6),
+    bind,
+    tupleToHostAddress,
+    tupleToHostAddress6,
+ )
 import Text.Printf (printf)
 
 import Hannibal.Config (Config (..))
-import Hannibal.Instance
-    ( Instance (..), InstanceT, InstanceIO
-    , askConfig
-    )
-import Hannibal.Network.Message
-    ( Message (..), IsMessage (..), conduitPutMessage, getMessage
-    )
+import Hannibal.Instance (Instance (..), InstanceIO, InstanceT, askConfig, forkInstance)
+import Hannibal.Network.Message (
+    IsMessage (..),
+    SerializedMessage (..),
+    conduitPutMessage,
+    getMessage,
+ )
 import Hannibal.UUID (UUID)
 
 -- | The maximum size of an UDP discovery packet.
@@ -53,16 +56,19 @@ maxMessageSize :: Int
 maxMessageSize = 65507 -- UDP on IPv4 maximum payload.
 
 -- | Announce the current client instance to the local network.
-data AnnounceMessage = AnnounceMessage { amID :: !UUID }
+data AnnounceMessage = AnnounceMessage {amID :: !UUID, amName :: Text}
     deriving (Eq, Show)
 
 instance IsMessage AnnounceMessage where
-    toMessage AnnounceMessage{..} = Message
-        [ "type"    B.=: asText "announce"
-        , "id"      B.=: amID
-        ]
+    serializeMessage AnnounceMessage{..} =
+        SerializedMessage
+            [ "type" B.=: asText "announce"
+            , "id" B.=: amID
+            , "name" B.=: amName
+            ]
 
-    fromMessage (Message doc) = AnnounceMessage <$> doc B.!? "id"
+    deserializeMessage (SerializedMessage doc) =
+        AnnounceMessage <$> doc B.!? "id" <*> doc B.!? "name"
 
 -- | Returns a broadcast socket address for the given socket protocol family.
 broadcastAddr :: Monad m => Family -> InstanceT m SockAddr
@@ -70,52 +76,62 @@ broadcastAddr family = do
     discoveryPort <- cDiscoveryPort <$> askConfig
     return $! case family of
         AF_INET ->
-            let ipv4Addr = (255, 255, 255, 255)
-            in SockAddrInet discoveryPort (tupleToHostAddress ipv4Addr)
+            let ipv4Addr = tupleToHostAddress (255, 255, 255, 255)
+             in SockAddrInet discoveryPort ipv4Addr
         AF_INET6 ->
-             -- Link local broadcast (LAN)
-            let ipv6Addr = (0xFF02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0)
-            in SockAddrInet6 discoveryPort 0 (tupleToHostAddress6 ipv6Addr) 0
+            -- Link local broadcast (LAN)
+            let ipv6Addr = tupleToHostAddress6 (0xFF02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0)
+             in SockAddrInet6 discoveryPort 0 ipv6Addr 0
         _ -> error "Socket family does not support broadcast"
 
--- | Returns a socket address that can be used to listen to the discovery UDP
--- messages.
+{- | Returns a socket address that can be used to listen to the discovery UDP
+ messages.
+-}
 listenAddr :: Monad m => Family -> InstanceT m SockAddr
 listenAddr family = do
     discoveryPort <- cDiscoveryPort <$> askConfig
     return $! case family of
-        AF_INET -> SockAddrInet discoveryPort iNADDR_ANY
-        AF_INET6 -> SockAddrInet6 discoveryPort 0 iN6ADDR_ANY 0
+        AF_INET ->
+            let ipv4Addr = tupleToHostAddress (0, 0, 0, 0)
+             in SockAddrInet discoveryPort ipv4Addr
+        AF_INET6 ->
+            let ipv6Addr = tupleToHostAddress6 (0, 0, 0, 0, 0, 0, 0, 0)
+             in SockAddrInet6 discoveryPort 0 ipv6Addr 0
         _ -> error "Socket family not supported"
 
 -- | Sends an UDP broadcast message announcing the client to the local network.
 announceInstance :: InstanceIO ()
 announceInstance = do
     uuid <- iInstanceID <$> ask
+    name <- cName . iConfig <$> ask
 
     sock <- iDiscoverySocket <$> ask
     addr <- broadcastAddr AF_INET
 
-    let msg = AnnounceMessage uuid
+    let msg = AnnounceMessage uuid name
 
-    C.runConduit $!
-             C.yield msg
+    C.runConduit
+        $! C.yield msg
         C..| conduitPutMessage
-        C..| C.map (\bs ->
-            assert (length bs <= maxMessageSize) (C.Message bs addr))
+        C..| C.map
+            ( \bs ->
+                assert (length bs <= maxMessageSize) (C.Message bs addr)
+            )
         C..| C.sinkToSocket sock
 
-    let logMsg = pack $! printf
-            "Broadcasted discovery announce to %v" (show addr)
-    $(logDebug) logMsg
+    $(logDebug) $! pack
+        $! printf
+            "Broadcasted discovery announce to %v"
+            (show addr)
 
 newtype AnnounceDaemonException = AnnounceDaemonException String
-    deriving Show
+    deriving (Show)
 
 instance Exception AnnounceDaemonException
 
--- | Forks a thread that repetitively listens to UDP messages that announce
--- Hannibal clients.
+{- | Forks a thread that repetitively listens to UDP messages that announce
+ Hannibal clients.
+-}
 discoveryDaemon :: InstanceIO ThreadId
 discoveryDaemon = do
     sock <- iDiscoverySocket <$> ask
@@ -124,41 +140,38 @@ discoveryDaemon = do
     liftIO $! bind sock addr
 
     let conduit = C.sourceSocket sock maxMessageSize C..| datagramSink
-    threadId <- fork $! C.runConduit conduit
+    threadId <- forkInstance $! C.runConduit conduit
 
-    let logMsg = pack $! printf
-            "Discovery deamon listening on `%v`" (show addr)
-    $(logInfo) logMsg
+    $(logInfo) $! pack
+        $! printf
+            "Discovery deamon listening on `%v`"
+            (show addr)
 
     return threadId
   where
-    datagramSink :: (MonadIO m, MonadThrow m, MonadLogger m) =>
+    datagramSink ::
+        (MonadIO m, MonadThrow m, MonadLogger m) =>
         C.ConduitT C.Message C.Void m ()
-    datagramSink = C.mapM_ (\dgram ->
-        readDatagram dgram >>= uncurry handleAnnounce)
+    datagramSink = C.mapM_ $ readDatagram >=> uncurry handleAnnounce
 
-    -- | Tries to read the UDP discovery datagram, or throws a
-    -- `AnnounceDaemonException`.
     readDatagram :: MonadThrow m => C.Message -> m (SockAddr, AnnounceMessage)
     readDatagram (C.Message msgData msgAddr) =
         case runGetOrFail getMessage $! LBS.fromStrict msgData of
             Left (_, _, errorMsg) ->
-                throw $! AnnounceDaemonException errorMsg
+                throwM $! AnnounceDaemonException errorMsg
             Right (remaining, _, msg)
                 | LBS.null remaining -> return (msgAddr, msg)
-                | otherwise -> throw $!
-                    AnnounceDaemonException "Packet continues after message."
+                | otherwise ->
+                    throwM $! AnnounceDaemonException "Packet continues after message."
 
-    handleAnnounce :: (MonadLogger m, MonadIO m) =>
-        SockAddr -> AnnounceMessage -> m ()
+    handleAnnounce ::
+        (MonadLogger m, MonadIO m) =>
+        SockAddr ->
+        AnnounceMessage ->
+        m ()
     handleAnnounce addr AnnounceMessage{..} = do
-        $(logDebug) $! pack $! printf
-            "Received discovery announce (id: %v, address: %v)"
-            (show amID) (show addr)
-
-        --
-        -- currentID <- iInstanceID <$> ask
-        -- let !isCurrentClient = amID == currentID
-        --
-        -- unless isCurrentClient $ do
-        --     return ()
+        $(logDebug) $! pack
+            $! printf
+                "Received discovery announce (id: %v, address: %v)"
+                (show amID)
+                (show addr)

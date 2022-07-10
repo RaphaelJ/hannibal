@@ -15,9 +15,9 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-module Hannibal.Network.FileTransfer
-    ( putPiece
-    ) where
+module Hannibal.Network.FileTransfer (
+    putPiece,
+) where
 
 import ClassyPrelude
 
@@ -28,12 +28,13 @@ import Data.Bson.Binary (putDocument)
 
 import qualified Data.ByteString.Lazy as LBS
 
-import Hannibal.Filesystem.Pieces (PieceDesc (..))
+import Hannibal.Filesystem.FileDesc (Digest (dValue), PieceDesc (..))
 
 putPiece :: PieceDesc -> LByteString -> Put
-putPiece !PieceDesc{..} content = do
+putPiece PieceDesc{..} content = do
     let Just content' = Just $! LBS.toStrict content
 
-    putDocument [ "digest"    =: Binary pdDigest
-                , "content"   =: Binary content'
-                ]
+    putDocument
+        [ "digest" =: Binary (dValue pdDigest)
+        , "content" =: Binary content'
+        ]

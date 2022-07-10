@@ -1,76 +1,140 @@
-name:                hannibal
+cabal-version: 1.12
 
--- The package version.  See the Haskell package versioning policy (PVP)
--- for standards guiding when and how versions should be incremented.
--- https://wiki.haskell.org/Package_versioning_policy
--- PVP summary:      +-+------- breaking API changes
---                   | | +----- non-breaking API additions
---                   | | | +--- code changes with no API change
-version:             0.1.0.0
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
 
-synopsis:            Hannibal is a P2P client to share files on a local network
-                    (LAN)
--- description:
+name:           hannibal
+version:        0.1.0.0
+synopsis:       Hannibal is a P2P client to share files on a local network
+description:    Please see the README on GitHub at <https://github.com/RaphaelJ/hannibal>
+category:       Network
+homepage:       https://github.com/RaphaelJ/hannibal#readme
+bug-reports:    https://github.com/RaphaelJ/hannibal/issues
+author:         Raphael Javaux
+maintainer:     raphaeljavaux@gmail.com
+copyright:      2022 Raphael javaux
+license:        GPL3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
 
-homepage:            https://github.com/RaphaelJ/hannibal
+source-repository head
+  type: git
+  location: https://github.com/RaphaelJ/hannibal
 
-license:             GPL-3
-license-file:        LICENSE
--- copyright:
+library
+  exposed-modules:
+      Hannibal.Config
+      Hannibal.Filesystem.FileDesc
+      Hannibal.Filesystem.FileIndex
+      Hannibal.Instance
+      Hannibal.Network.Control
+      Hannibal.Network.Discovery
+      Hannibal.Network.FileTransfer
+      Hannibal.Network.Message
+      Hannibal.Network.Sockets
+      Hannibal.UUID
+  other-modules:
+      Paths_hannibal
+  hs-source-dirs:
+      src
+  default-extensions:
+      BangPatterns
+      NoImplicitPrelude
+      FlexibleInstances
+      OverloadedStrings
+      RecordWildCards
+      UndecidableInstances
+      TemplateHaskell
+  ghc-options: -Wall -Werror -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      SHA >=1.6.4.4 && <1.7
+    , base >=4.7 && <5
+    , binary >=0.8.8.0 && <0.9
+    , binary-conduit >=1.3.1 && <1.4
+    , bson >=0.4.0.1 && <0.5
+    , bytestring >=0.10.12.0 && <0.11
+    , classy-prelude >=1.5.0.2 && <1.6
+    , conduit >=1.3.4.2 && <1.5
+    , conduit-extra >=1.3.5 && <1.4
+    , containers >=0.6.4.1 && <0.7
+    , directory-tree >=0.12.1 && <0.13
+    , filepath >=1.4.2.1 && <1.5
+    , lz4 >=0.2.3.1 && <0.3
+    , monad-logger >=0.3.36 && <0.4
+    , mtl >=2.2.2 && <2.3
+    , network >=3.1.1.1 && <3.2
+    , random >=1.2.0 && <1.3
+    , streaming-commons >=0.2.2.4 && <0.3
+    , text >=1.2.4.1 && <1.3
+    , uuid >=1.3.15 && <1.4
+    , vector >=0.12.3.1 && <0.13
+  default-language: Haskell2010
 
-author:              Raphael Javaux
-maintainer:          raphaeljavaux@gmail.com
+executable hannibal-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_hannibal
+  hs-source-dirs:
+      app
+  ghc-options: -Wall -Werror -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      SHA >=1.6.4.4 && <1.7
+    , base >=4.7 && <5
+    , binary >=0.8.8.0 && <0.9
+    , binary-conduit >=1.3.1 && <1.4
+    , bson >=0.4.0.1 && <0.5
+    , bytestring >=0.10.12.0 && <0.11
+    , classy-prelude >=1.5.0.2 && <1.6
+    , conduit >=1.3.4.2 && <1.5
+    , conduit-extra >=1.3.5 && <1.4
+    , containers >=0.6.4.1 && <0.7
+    , directory-tree >=0.12.1 && <0.13
+    , filepath >=1.4.2.1 && <1.5
+    , hannibal
+    , lz4 >=0.2.3.1 && <0.3
+    , monad-logger >=0.3.36 && <0.4
+    , mtl >=2.2.2 && <2.3
+    , network >=3.1.1.1 && <3.2
+    , random >=1.2.0 && <1.3
+    , streaming-commons >=0.2.2.4 && <0.3
+    , text >=1.2.4.1 && <1.3
+    , uuid >=1.3.15 && <1.4
+    , vector >=0.12.3.1 && <0.13
+  default-language: Haskell2010
 
-category:            Network
-
-build-type:          Simple
-
-extra-source-files:  ChangeLog.md
-
-cabal-version:       >=1.10
-
-executable hannibal
-  main-is:              Main.hs
-
-  -- Modules included in this executable, other than Main.
-  -- other-modules:
-
-  -- LANGUAGE extensions used by modules in this package.
-  -- other-extensions:
-
-  -- Other library packages from which modules are imported.
-  build-depends:        base                >= 4.9 && < 4.10
-                      , binary              >= 0.8.3.0 && < 0.9
-                      , bson                >= 0.3.2.3 && < 0.4
-                      , bytestring          >= 0.10.0.1 && < 0.11
-                      , classy-prelude      >= 1.0.0.1 && < 1.1
-                      , conduit             >= 1.3.0.2 && < 1.4
-                      , conduit-extra       >= 1.3.0 && < 1.4
-                      , binary-conduit      >= 1.3 && < 1.4
-                      , containers          >= 0.5.7.1 && < 0.6
-                      , directory-tree      >= 0.12.1 && < 0.13
-                      , lz4                 >= 0.2.3.1 && < 0.3
-                      , monad-logger        >= 0.3.28.5 && < 0.4
-                      , mtl                 >= 2.2.1 && < 2.3
-                      , network             >= 2.6.3.1 && < 2.7
-                      , random              >= 1.1 && < 1.2
-                      , safe-exceptions     >= 0.1.4.0 && < 0.2
-                      , SHA                 >= 1.6.4.2 && < 1.7
-                      , streaming-commons   >= 0.2.0.0 && < 0.3
-                      , text                >= 1.2.2.1 && < 1.3
-                      , uuid                >= 1.3.13 && < 1.4
-                      , vector              >= 0.11 && < 0.12
-
-  hs-source-dirs:       src
-
-  ghc-options:          -Wall -Werror -rtsopts -threaded
-
-  default-language:     Haskell2010
-
-  default-extensions:   BangPatterns
-                        NoImplicitPrelude
-                        FlexibleInstances
-                        OverloadedStrings
-                        RecordWildCards
-                        UndecidableInstances
-                        TemplateHaskell
+test-suite hannibal-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_hannibal
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Werror -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      SHA >=1.6.4.4 && <1.7
+    , base >=4.7 && <5
+    , binary >=0.8.8.0 && <0.9
+    , binary-conduit >=1.3.1 && <1.4
+    , bson >=0.4.0.1 && <0.5
+    , bytestring >=0.10.12.0 && <0.11
+    , classy-prelude >=1.5.0.2 && <1.6
+    , conduit >=1.3.4.2 && <1.5
+    , conduit-extra >=1.3.5 && <1.4
+    , containers >=0.6.4.1 && <0.7
+    , directory-tree >=0.12.1 && <0.13
+    , filepath >=1.4.2.1 && <1.5
+    , hannibal
+    , lz4 >=0.2.3.1 && <0.3
+    , monad-logger >=0.3.36 && <0.4
+    , mtl >=2.2.2 && <2.3
+    , network >=3.1.1.1 && <3.2
+    , random >=1.2.0 && <1.3
+    , streaming-commons >=0.2.2.4 && <0.3
+    , text >=1.2.4.1 && <1.3
+    , uuid >=1.3.15 && <1.4
+    , vector >=0.12.3.1 && <0.13
+  default-language: Haskell2010

@@ -1,0 +1,4 @@
+packages:
+resolver: lts-18.28
+extra-deps:
+  - lz4-0.2.3.1@sha256:9d286f1c8e3e3aab86ebb8cd39b485af57c0a05d9da5baf921641012a3c83cf0,1821
