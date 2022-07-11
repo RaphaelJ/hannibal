@@ -19,10 +19,12 @@ module Main where
 
 import ClassyPrelude
 
+import Control.Concurrent (threadDelay)
+
 import Hannibal.Config (defaultConfig)
 import Hannibal.Instance (getInstance, runWithInstance)
-import Hannibal.Network.Discovery (announceInstance, discoveryDaemon)
-import Hannibal.Network.Control (controlDaemon)
+import Hannibal.Network.Control (controlServer)
+import Hannibal.Network.Discovery (announceInstance, discoveryServer)
 
 -- import Hannibal.Filesystem.FileIndex (newIndex, addDirectory)
 
@@ -36,12 +38,13 @@ main = do
 
     inst <- getInstance defaultConfig
 
-    runWithInstance (do
-        _ <- discoveryDaemon
-        _ <- controlDaemon
+    runWithInstance
+        ( do
+            _ <- discoveryServer
+            _ <- controlServer
 
-        forever $! do
-            threadDelay 10000000
-            announceInstance
-
-        ) inst
+            forever $! do
+                liftIO $ threadDelay 10000000
+                announceInstance
+        )
+        inst

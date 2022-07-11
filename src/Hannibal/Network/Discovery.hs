@@ -17,7 +17,7 @@
 
 module Hannibal.Network.Discovery (
     announceInstance,
-    discoveryDaemon,
+    discoveryServer,
 ) where
 
 import ClassyPrelude
@@ -132,8 +132,8 @@ instance Exception AnnounceDaemonException
 {- | Forks a thread that repetitively listens to UDP messages that announce
  Hannibal clients.
 -}
-discoveryDaemon :: InstanceIO ThreadId
-discoveryDaemon = do
+discoveryServer :: InstanceIO ThreadId
+discoveryServer = do
     sock <- iDiscoverySocket <$> ask
     addr <- listenAddr AF_INET
 

@@ -15,7 +15,7 @@
 -- You should have received a copy of the GNU General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>
 module Hannibal.Network.Control (
-    controlDaemon,
+    controlServer,
 ) where
 
 import ClassyPrelude
@@ -23,6 +23,8 @@ import ClassyPrelude
 import qualified Data.Bson as B
 import qualified Data.Conduit as C
 
+import Conduit (MonadThrow)
+import Control.Concurrent (ThreadId)
 import Control.Monad.Logger (logInfo)
 import Data.Conduit.Network (appSink, appSockAddr, appSource, forkTCPServer)
 import Data.Streaming.Network (serverSettingsTCPSocket)
@@ -34,6 +36,8 @@ import Network.Socket (
     getSocketName,
     listen,
     maxListenQueue,
+    tupleToHostAddress,
+    tupleToHostAddress6,
  )
 import Text.Printf (printf)
 
@@ -63,14 +67,14 @@ data ControlMessage = -- | Authenticates the Hannibal instance to the other peer
     deriving (Eq, Show)
 
 instance IsMessage ControlMessage where
-    toMessage HelloMessage{..} =
-        Message
+    serializeMessage HelloMessage{..} =
+        SerializedMessage
             [ "type" B.=: asText "hello"
             , "name" B.=: hmName
             , "id" B.=: hmID
             ]
 
-    fromMessage (Message doc) = do
+    deserializeMessage (SerializedMessage doc) = do
         type_ <- doc B.!? "type" :: Maybe Text
 
         case type_ of
@@ -87,7 +91,7 @@ instance IsMessage ControlMessage where
 listenAddr :: Monad m => Family -> InstanceT m SockAddr
 listenAddr family = do
     -- Uses port `0` when not defined to automatically allocate a port.
-    controlPort <- (fromMaybe 0 . cControlPort) <$> askConfig
+    controlPort <- fromMaybe 0 . cControlPort <$> askConfig
     return $! case family of
         AF_INET ->
             let ipv4Addr = tupleToHostAddress (0, 0, 0, 0)
@@ -121,14 +125,14 @@ clientHandle peerAddr = do
             "Handle incoming control link from `%v`"
             (show peerAddr)
 
-    -- Waits for the hello message, and respond with another hello message.
+    -- Waits for the hello message, and responds with another hello message.
     inHelloMsg <- C.await
     case inHelloMsg of
-        Just (HelloMessage{..}) -> lift helloMessage >>= C.yield
+        Just (HelloMessage{}) -> lift helloMessage >>= C.yield
         _ -> error "Expected hello message"
 
 --
--- Daemon
+-- Server
 --
 
 {- | Forks a thread that repetitively listens to incomming TCP connections on
@@ -137,9 +141,9 @@ clientHandle peerAddr = do
  Returns the port the thread ID of the server and the TCP port it's listening
  on.
 -}
-controlDaemon :: InstanceIO (ThreadId, PortNumber)
-controlDaemon = do
-    sock <- iControlSocket <$> ask
+controlServer :: InstanceIO (ThreadId, PortNumber)
+controlServer = do
+    sock <- iControlServerSocket <$> ask
     addr <- listenAddr AF_INET
 
     liftIO $! do
